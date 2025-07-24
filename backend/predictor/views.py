@@ -33,6 +33,7 @@ def predict_view(request):
             'patient_name': patient.name,
             'csv_match': matched
         }
+
         if not matched:
             # Use closest match
             closest_result, closest_row, distance = get_closest_prediction_from_csv(features)
