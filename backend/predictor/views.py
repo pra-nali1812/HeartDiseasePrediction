@@ -13,6 +13,7 @@ import pandas as pd
 import os
 from django.conf import settings
 from rest_framework.decorators import api_view
+from . import report_utils
 
 @csrf_exempt
 def predict_view(request):
@@ -41,8 +42,33 @@ def predict_view(request):
             response['closest_match'] = closest_row
             response['distance'] = distance
             response['message'] = f'No exact match found. Closest match result: {"Yes" if closest_result else "No"} (distance: {distance:.2f})'
+
         prediction = Prediction.objects.create(patient=patient, result=response['prediction'])
         response['prediction_id'] = prediction.id
+
+        # --- Detailed report logic ---
+        # Map features list to dict for report_utils
+        feature_names = ['age','sex','cp','trestbps','chol','fbs','restecg','thalach','exang','oldpeak','slope','ca','thal']
+        features_dict = dict(zip(feature_names, features))
+        # Convert sex, fbs, exang, restecg, cp, slope, ca, thal to int if needed
+        for k in ['sex','cp','fbs','restecg','thalach','exang','slope','ca','thal']:
+            if k in features_dict:
+                try:
+                    features_dict[k] = int(features_dict[k])
+                except Exception:
+                    pass
+        risk_analysis = report_utils.analyze_risk_factors(features_dict)
+        risk_factors = risk_analysis['risk_factors']
+        normal_parameters = risk_analysis['normal_parameters']
+        findings = report_utils.generate_findings(risk_factors, response['prediction'])
+        findings['normal_parameters'] = normal_parameters
+        recommendations = report_utils.generate_recommendations(risk_factors, response['prediction'])
+        response['detailed_report'] = {
+            'findings': findings,
+            'recommendations': recommendations
+        }
+        # --- End detailed report logic ---
+
         return JsonResponse(response)
     elif request.method == 'GET':
         return JsonResponse({'message': 'Use POST to submit patient data for prediction. GET is not supported for predictions.'}, status=405)
